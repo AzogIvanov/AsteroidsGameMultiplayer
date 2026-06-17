@@ -3,6 +3,7 @@ using Fusion;
 using Fusion.Sockets;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using TMPro;
 using UnityEditor;
 using UnityEngine;
@@ -22,6 +23,8 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
     [SerializeField] private string lobbyScene;
 
     [SerializeField] private PlayerData _playerDataPrefab = null;
+
+    [SerializeField] private TMP_InputField _roomNameInput = null;
     [SerializeField] private TMP_InputField _nickNameInput = null;
 
     private bool isInLobby;
@@ -46,8 +49,11 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
 
     public void CreateRandomSession()
     {
-        int id = UnityEngine.Random.Range(1000, 9999);
-        StartGame("Room-" + id);
+        string roomName = !string.IsNullOrWhiteSpace(_roomNameInput.text)
+            ? _roomNameInput.text
+            : "Room-" + UnityEngine.Random.Range(1000, 9999);
+
+        StartGame(roomName);
     }
 
     public void JoinRoom(string roomName)
@@ -63,7 +69,6 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
             return;
         }
 
-        // Crear PlayerData igual que hacía StartMenu
         var playerData = FindObjectOfType<PlayerData>();
         if (playerData == null)
         {
@@ -72,6 +77,8 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
 
         if (_nickNameInput != null && !string.IsNullOrWhiteSpace(_nickNameInput.text))
             playerData.SetNickName(_nickNameInput.text);
+        else
+            playerData.SetNickName(PlayerData.GetRandomNickName());
 
         await runnerInstance.StartGame(new StartGameArgs()
         {
@@ -179,6 +186,39 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
         }
         SceneManager.LoadScene(lobbyScene);
     }
+    public void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
+    {
+        // Si el jugador que se fue era el MasterClient, forzamos que todos vuelvan al lobby
+        if (runner.ActivePlayers.Count() <= 1 || WasMasterClient(player))
+        {
+            runner.Shutdown();
+        }
+    }
+
+    private bool WasMasterClient(PlayerRef player)
+    {
+        // En Shared mode el primer jugador (PlayerId más bajo, normalmente 1) suele ser el creador
+        return player.PlayerId == 1;
+    }
+
+    private void ReclaimOrphanedObjects(NetworkRunner runner)
+    {
+        var gameState = FindObjectOfType<GameStateController>();
+        if (gameState != null && gameState.Object != null && !gameState.Object.HasStateAuthority)
+            gameState.Object.RequestStateAuthority();
+
+        var asteroidSpawner = FindObjectOfType<AsteroidSpawner>();
+        if (asteroidSpawner != null && asteroidSpawner.Object != null && !asteroidSpawner.Object.HasStateAuthority)
+            asteroidSpawner.Object.RequestStateAuthority();
+
+        // Reclamar todos los asteroides huérfanos
+        var asteroids = FindObjectsOfType<AsteroidBehaviour>();
+        foreach (var asteroid in asteroids)
+        {
+            if (asteroid.Object != null && !asteroid.Object.HasStateAuthority)
+                asteroid.Object.RequestStateAuthority();
+        }
+    }
 
     public void OnConnectedToServer(NetworkRunner runner) { }
     public void OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress, NetConnectFailedReason reason) { }
@@ -190,7 +230,6 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
     public void OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input) { }
     public void OnObjectEnterAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player) { }
     public void OnObjectExitAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player) { }
-    public void OnPlayerLeft(NetworkRunner runner, PlayerRef player) { }
     public void OnReliableDataProgress(NetworkRunner runner, PlayerRef player, ReliableKey key, float progress) { }
     public void OnReliableDataReceived(NetworkRunner runner, PlayerRef player, ReliableKey key, ArraySegment<byte> data) { }
     public void OnSceneLoadStart(NetworkRunner runner) { }

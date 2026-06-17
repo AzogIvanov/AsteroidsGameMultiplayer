@@ -2803,6 +2803,7 @@ MonoBehaviour:
   gameplayScene: AsteroidsSimple-Game
   lobbyScene: AsteroidsSimple-Menu
   _playerDataPrefab: {fileID: 538457862}
+  _roomNameInput: {fileID: 1722930507}
   _nickNameInput: {fileID: 572867303}
 --- !u!4 &1721686267
 Transform:

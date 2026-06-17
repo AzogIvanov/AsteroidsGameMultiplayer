@@ -33,10 +33,13 @@ namespace Asteroids.HostSimple
 
         public override void Spawned()
         {
+            Debug.Log($"GameStateController Spawned - HasStateAuthority: {Object.HasStateAuthority} | LocalPlayer: {Runner.LocalPlayer}");
+
             _startEndDisplay.gameObject.SetActive(true);
             _ingameTimerDisplay.gameObject.SetActive(false);
 
-            // En Shared mode el primer jugador que entra toma la StateAuthority
+            Runner.SetIsSimulated(Object, true);
+
             if (Object.HasStateAuthority)
             {
                 _gameState = GameState.Starting;
@@ -51,25 +54,45 @@ namespace Asteroids.HostSimple
 
         public override void FixedUpdateNetwork()
         {
+            Debug.Log($"GameStateController FixedUpdateNetwork - state: {_gameState} | HasStateAuthority: {Object.HasStateAuthority}");
 
             switch (_gameState)
             {
                 case GameState.Starting:
                     UpdateStartingDisplay();
                     break;
-
                 case GameState.Running:
                     UpdateRunningDisplay();
-
                     if (_timer.ExpiredOrNotRunning(Runner))
-                        GameHasEnded();
-
+                    {
+                        if (Object.HasStateAuthority)
+                            DetermineWinnerAndEnd();
+                    }
                     break;
-
                 case GameState.Ending:
                     UpdateEndingDisplay();
                     break;
             }
+        }
+        private void DetermineWinnerAndEnd()
+        {
+            NetworkBehaviourId winnerId = default;
+            int maxScore = -1;
+
+            foreach (var id in _playerDataNetworkedIds)
+            {
+                if (Runner.TryFindBehaviour(id, out PlayerDataNetworked p))
+                {
+                    if (p.Score > maxScore)
+                    {
+                        maxScore = p.Score;
+                        winnerId = id;
+                    }
+                }
+            }
+
+            _winner = winnerId;
+            GameHasEnded();
         }
 
         private void UpdateStartingDisplay()
@@ -93,6 +116,7 @@ namespace Asteroids.HostSimple
 
         private void UpdateRunningDisplay()
         {
+            Debug.Log($"UpdateRunningDisplay ejecutado - local player: {Runner.LocalPlayer}");
             _startEndDisplay.gameObject.SetActive(false);
             _ingameTimerDisplay.gameObject.SetActive(true);
 
@@ -117,13 +141,44 @@ namespace Asteroids.HostSimple
 
         public void TrackNewPlayer(NetworkBehaviourId id)
         {
-            _playerDataNetworkedIds.Add(id);
+            if (Object.HasStateAuthority)
+            {
+                if (!_playerDataNetworkedIds.Contains(id))
+                    _playerDataNetworkedIds.Add(id);
+            }
+            else
+            {
+                RpcTrackNewPlayer(id);
+            }
+        }
+
+        [Rpc(sources: RpcSources.All, targets: RpcTargets.StateAuthority)]
+        private void RpcTrackNewPlayer(NetworkBehaviourId id)
+        {
+            if (!_playerDataNetworkedIds.Contains(id))
+                _playerDataNetworkedIds.Add(id);
         }
 
         public void CheckIfGameHasEnded()
         {
-            if (!Object.HasStateAuthority) return;
+            if (Object.HasStateAuthority)
+            {
+                DoCheckIfGameHasEnded();
+            }
+            else
+            {
+                RpcCheckIfGameHasEnded();
+            }
+        }
 
+        [Rpc(sources: RpcSources.All, targets: RpcTargets.StateAuthority)]
+        private void RpcCheckIfGameHasEnded()
+        {
+            DoCheckIfGameHasEnded();
+        }
+
+        private void DoCheckIfGameHasEnded()
+        {
             int alive = 0;
 
             for (int i = 0; i < _playerDataNetworkedIds.Count; i++)
@@ -135,7 +190,6 @@ namespace Asteroids.HostSimple
 
             if (alive > 0) return;
 
-            // Buscar ganador (el que más puntos tenga)
             NetworkBehaviourId winnerId = default;
             int maxScore = -1;
 

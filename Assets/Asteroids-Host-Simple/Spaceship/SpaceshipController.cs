@@ -92,6 +92,8 @@ namespace Asteroids.HostSimple
             {
                 var asteroid = col.GetComponent<AsteroidBehaviour>();
                 if (asteroid == null) continue;
+                if (asteroid.Object == null || !asteroid.Object.IsValid) continue;
+
                 if (!asteroid.IsAlive) continue;
                 asteroid.HitAsteroid(PlayerRef.None);
                 return true;

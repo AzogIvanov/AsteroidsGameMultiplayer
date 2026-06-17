@@ -41,14 +41,16 @@ namespace Asteroids.HostSimple
 
         public override void FixedUpdateNetwork()
         {
-            Debug.Log($"Movement - HasInputAuthority: {Object.HasInputAuthority} | HasStateAuthority: {Object.HasStateAuthority} | AcceptInput: {_spaceshipController.AcceptInput}");
-
             if (_spaceshipController.AcceptInput == false) return;
 
             if (Runner.TryGetInputForPlayer<SpaceshipInput>(Object.InputAuthority, out var input))
             {
-                Debug.Log($"Input recibido - H: {input.HorizontalInput} V: {input.VerticalInput}");
+                Debug.Log($"Input recibido - H: {input.HorizontalInput} V: {input.VerticalInput} | InputAuthority: {Object.InputAuthority}");
                 Move(input);
+            }
+            else
+            {
+                Debug.Log($"NO se recibió input para InputAuthority: {Object.InputAuthority}");
             }
 
             if (Object.HasStateAuthority)

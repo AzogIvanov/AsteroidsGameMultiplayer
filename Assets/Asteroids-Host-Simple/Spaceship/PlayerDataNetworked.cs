@@ -93,6 +93,19 @@ namespace Asteroids.HostSimple
         // Increase the score by X amount of points
         public void AddToScore(int points)
         {
+            if (Object.HasStateAuthority)
+            {
+                Score += points;
+            }
+            else
+            {
+                RpcAddToScore(points);
+            }
+        }
+
+        [Rpc(sources: RpcSources.All, targets: RpcTargets.StateAuthority)]
+        private void RpcAddToScore(int points)
+        {
             Score += points;
         }
 

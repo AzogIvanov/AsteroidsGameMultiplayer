@@ -8,14 +8,8 @@ public class SessionListEntry : MonoBehaviour
     public TextMeshProUGUI roomName, playerCount;
     public Button joinButton;
 
-
     public void JoinRoom()
     {
-        NetworkManager.runnerInstance.StartGame(new StartGameArgs()
-        {
-            SessionName = roomName.text,
-            GameMode = GameMode.Shared,
-        });
+        FindObjectOfType<NetworkManager>().JoinRoom(roomName.text);
     }
-
 }

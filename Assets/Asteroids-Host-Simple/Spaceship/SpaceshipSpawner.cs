@@ -6,42 +6,56 @@ namespace Asteroids.HostSimple
     public class SpaceshipSpawner : NetworkBehaviour, IPlayerJoined, IPlayerLeft
     {
         [SerializeField] private NetworkPrefabRef _spaceshipNetworkPrefab = NetworkPrefabRef.Empty;
-        private bool _gameIsReady = false;
+        [Networked] private NetworkBool _gameIsReady { get; set; }
         private GameStateController _gameStateController = null;
         private SpawnPoint[] _spawnPoints = null;
 
         public override void Spawned()
         {
-            // En Shared mode todos necesitan los spawn points, quitamos el guard de StateAuthority
             _spawnPoints = FindObjectsOfType<SpawnPoint>();
+            StartCoroutine(CheckAndSpawnSelf());
+        }
+
+        private System.Collections.IEnumerator CheckAndSpawnSelf()
+        {
+            // Esperar a que el juego esté listo (puede tardar si nos unimos antes de la cuenta atrás)
+            while (!_gameIsReady)
+            {
+                yield return null;
+            }
+
+            if (!Runner.TryGetPlayerObject(Runner.LocalPlayer, out _))
+            {
+                SpawnSpaceship(Runner.LocalPlayer);
+            }
         }
 
         public void StartSpaceshipSpawner(GameStateController gameStateController)
         {
+            Debug.Log($"StartSpaceshipSpawner ejecutado por: {Runner.LocalPlayer}");
             _gameIsReady = true;
             _gameStateController = gameStateController;
-
-            foreach (var player in Runner.ActivePlayers)
-            {
-                if (Runner.TryGetPlayerObject(player, out _)) continue;
-                SpawnSpaceship(player);
-            }
         }
 
         public void PlayerJoined(PlayerRef player)
         {
-            Debug.Log($"PlayerJoined - player: {player} | HasStateAuthority: {Object.HasStateAuthority} | gameIsReady: {_gameIsReady}");
+            
+        }
 
-            // Solo el MasterClient spawnea naves
-            if (Object.HasStateAuthority == false) return;
+        private System.Collections.IEnumerator WaitAndSpawn()
+        {
+            // Esperamos hasta 2 segundos a que _gameIsReady se sincronice por red
+            float timeout = 2f;
+            while (!_gameIsReady && timeout > 0)
+            {
+                timeout -= Time.deltaTime;
+                yield return null;
+            }
 
-            // Si el juego no ha empezado, StartSpaceshipSpawner lo hará
-            if (_gameIsReady == false) return;
-
-            // Si ya tiene nave no spawneamos otra
-            if (Runner.TryGetPlayerObject(player, out _)) return;
-
-            SpawnSpaceship(player);
+            if (_gameIsReady && !Runner.TryGetPlayerObject(Runner.LocalPlayer, out _))
+            {
+                SpawnSpaceship(Runner.LocalPlayer);
+            }
         }
 
         public void PlayerLeft(PlayerRef player)
@@ -51,6 +65,7 @@ namespace Asteroids.HostSimple
 
         private void SpawnSpaceship(PlayerRef player)
         {
+            Debug.Log($"SpawnSpaceship llamado para: {player}");
             int index = player.PlayerId % _spawnPoints.Length;
             var spawnPosition = _spawnPoints[index].transform.position;
 
@@ -58,8 +73,10 @@ namespace Asteroids.HostSimple
                 _spaceshipNetworkPrefab,
                 spawnPosition,
                 Quaternion.identity,
-                inputAuthority: player
+                player
             );
+
+            Debug.Log($"Nave creada - InputAuthority asignado: {playerObject.InputAuthority} | player pasado: {player} | Runner.LocalPlayer: {Runner.LocalPlayer}");
 
             Runner.SetPlayerObject(player, playerObject);
 
